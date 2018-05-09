@@ -1,0 +1,1 @@
+We will practice data wrangling, cleaning, and visualizing skills as to get comfortable extracting data from the National Oceanic and Atmospheric Administration's (NOAA) APIs.  We will use the R package `rnoaa` to serve as the client to the APIs.
