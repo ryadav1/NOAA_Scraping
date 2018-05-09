@@ -1,0 +1,207 @@
+---
+output: html_document
+urlcolor: blue
+---
+
+========================================================
+### Name: Rajnish Yadav
+
+```{r setup, include=FALSE}
+#DON'T MODIFY THIS CHUNK!
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, tidy.opts=list(width.cutoff=50))
+```
+
+```{r}
+#Put all necessary libraries here
+library(httr)
+library(dplyr)
+library(ggplot2)
+library(rvest)
+library(stringr)
+library(rnoaa)
+library(lubridate)
+library(scales)
+```
+
+* You can find more information about the datasets and variables [here](https://www.ncdc.noaa.gov/homr/reports).
+
+First things first, go to [this NOAA website](https://www.ncdc.noaa.gov/cdo-web/token) to get a key emailed to you.
+
+```{r, eval = TRUE}
+options(noaakey = "NTwkGrsxACLZWXQrIAUDBduudZeebMCh")
+```
+
+From the National Climatic Data Center (NCDC) data, let's grab the stations in Delaware County.  We will store the data (found in `stations$data`) as `delaware_stations` and explore the dataset.
+
+```{r, eval = TRUE}
+stations <- ncdc_stations(datasetid='GHCND', locationid='FIPS:42045')
+delaware_stations <- stations$data
+delaware_stations
+```
+
+
+*********************************************************************************
+How many stations are in Delaware county?
+
+"UPPER DARBY, PA US" station is listed twice under the "name" column of the "delaware_stations" dataset with two different dates. In total, there are 15 unique stations in Delaware County. 
+
+*********************************************************************************
+Using the NCDC data, let's grab the daily precipitation data at the Philly airport in 2017.
+
+```{r, eval = FALSE}
+#First fill-in and run the following code to determine the datatypeid
+ncdc_datatypes(datasetid = 'GHCND', stationid = 'GHCND:USW00013739')
+
+#Scraping the precipation data for the Philly airport
+philly_airport <- ncdc(datasetid= 'GHCND', 
+                       datatypeid = 'PRCP',
+                       startdate = '2017-01-01', 
+                       enddate = '2017-12-31', 
+                       stationid = 'GHCND:USW00013739',
+                       limit = 1000)$data
+head(philly_airport, 25)
+```
+
+
+
+
+4. Use `ymd_hms()` in the lubridate package to wrangle the date to the correct format.  
+
+```{r}
+#Scraping the precipation data for the Philly airport
+philly_airport <- ncdc(datasetid= 'GHCND', 
+                       datatypeid = 'PRCP',
+                       startdate = '2017-01-01', 
+                       enddate = '2017-12-31', 
+                       stationid = 'GHCND:USW00013739',
+                       limit = 1000)$data
+philly_airport2 <- philly_airport %>%
+  mutate(date = ymd_hms(date))
+
+head(philly_airport2, 25)
+```
+
+Let's plot the precipitation data for the Philadelphia airport over time.   
+
+```{r, fig.width = 10, fig.height = 6}
+philly_airport2$date <- as.Date(philly_airport2$date)
+ggplot(philly_airport2, aes( x = date, y = value, col = as.factor(month(date)))) + 
+  geom_line() +
+  scale_x_date(breaks = pretty_breaks(10)) +
+  theme(legend.position='none') +
+  labs(title = "Plot of precipation value over time at Philadelphia International airport",
+       x = "months",
+       y = "precipitation value (millimeter per meter squared)",
+       caption = "Source: National Oceanic and Atmospheric Administration") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+
+*********************************************************************************
+
+From the plot above, we can see that the highest precipitation value was around 650 in September. Precipitation values were the lowest in the winter: November, December, January and February. From mid-July until mid-September- summer season in the east coast- had the highest precipitation values. Similarly, precipitation values had a few peaks in May as well. The precipitation values were low from June until mid-July. 
+
+*********************************************************************************
+
+Is it really that rainy in Seattle?  Let's re-create the plot but for a weather station in Seattle.  The location id is "GHCND:US1WAKG0041".  (This station is actually in Renton but the Seattle locations don't appear to have observations for 2017.)
+
+```{r, fig.width = 10, fig.height = 6}
+seattle <- ncdc(datasetid= 'GHCND', 
+                       datatypeid = 'PRCP',
+                       startdate = '2017-01-01', 
+                       enddate = '2017-12-31', 
+                       stationid = 'GHCND:US1WAKG0041',
+                       limit = 1000)$data
+seattle <- seattle %>%
+  mutate(date = ymd_hms(date))
+
+seattle$date <- as.Date(seattle$date)
+ggplot(seattle, aes( x = date, y = value, col = as.factor(month(date)))) + 
+  geom_line() +
+  scale_x_date(breaks = pretty_breaks(10)) +
+  theme(legend.position='none') +
+  labs(title = "Plot of precipation value over time in Renton",
+       subtitle = "Renton is located approximately 11.5 miles outside of Seattle",
+       x = "months",
+       y = "precipitation value (millimeter per meter squared)",
+       caption = "Source: National Oceanic and Atmospheric Administration") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+Let's join the Philadelphia and Seattle datasets using `bind_rows()` in `dplyr`.  Then wrangle the data to produce a table that contains the following information for each station: the proportion of days with at least some precipitation, the average amount of precipitation, and the maximum amount of precipitation.
+
+```{r}
+combined_dataset <- bind_rows(philly_airport2, seattle) 
+combined_dataset %>%
+  select(station, value) %>%
+  mutate(station = gsub("GHCND:USW00013739", "Philadelphia", station)) %>%
+  mutate(station = gsub("GHCND:US1WAKG0041", "Seattle", station)) %>%
+  group_by(station) %>%
+  summarise(prop_of_rainy_days = sum(value == 0)/n(),
+            avg_precipitation = mean(value),
+            max_precipitation = max(value)) 
+```
+
+Using your plots and summary statistics, compare the precipitation of Philadelphia and Seattle.
+
+*********************************************************************************
+
+Strangely enough, Philly had higher proportion of rainy days compared to Seattle. However, if we look at the plot of Seattle, we can see that it almost never rained in Seattle in the summer, from mid-June until mid-Semtember. But if we compare the average precipitation throughout 2017, it was higher in Seattle compared to Philly. During winter in the east coast, it would not be a good idea to go to Seattle to escape from the bad weather. It might not have been as cold in Seattle compared to Philadelphia; however, the precipitation was much higher in Seattle in the winter and spring months. 
+
+*********************************************************************************
+
+```{r, fig.width = 10, fig.height = 6}
+# Scraping the precipation data for the San Francisco airport
+sanfran_airport1 <- ncdc(datasetid= 'GHCND', 
+                       datatypeid = 'AWND',
+                       startdate = '2017-01-01', 
+                       enddate = '2017-12-31', 
+                       stationid = 'GHCND:USW00023234',
+                       limit = 1000)$data
+
+sanfran_airport <- sanfran_airport1 %>%
+  mutate(date = ymd_hms(date))
+
+# Scraping the precipation data for Boston
+boston1 <- ncdc(datasetid= 'GHCND', 
+                       datatypeid = 'AWND',
+                       startdate = '2017-01-01', 
+                       enddate = '2017-12-31', 
+                       stationid = 'GHCND:USW00014739',
+                       limit = 1000)$data
+
+boston <- boston1 %>%
+  mutate(date = ymd_hms(date))
+
+# Combining the datsets of san francisco airport and boston
+boston_sanfran <- bind_rows(sanfran_airport, boston)
+
+boston_sanfran <- boston_sanfran %>%
+  select(date, station, value) %>%
+  mutate(station = gsub("GHCND:USW00023234", "San Francisco Airport", station)) %>%
+  mutate(station = gsub("GHCND:USW00014739", "Boston", station))
+
+boston_sanfran$date <- as.Date(boston_sanfran$date)
+boston_sanfran_plot <- ggplot(boston_sanfran, aes( x = date, y = value)) + 
+                          geom_line(aes(col = station)) +
+                          scale_x_date(breaks = pretty_breaks(10)) +
+                          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                          labs(title = "Plot of average wind speed over time in Boston and San Fran airport",
+                               x = "months",
+                               y = "average wind speed",
+                               caption = "Source: National Oceanic and Atmospheric Administration") 
+
+boston_sanfran_plot
+
+```
+
+
+*********************************************************************************
+
+From the above plot, we can see that the avergae wind speed was considerably higher in October, November and December in Boston. Over the summer from May until August, San Francisco airport was more windy compared to Boston. In the Spring, there was not much difference in the average wind speed between the two stations; however from mid-February until mid-March, Boston had higher average wind speed compared to San Francisco airport. 
+
+*********************************************************************************
+
+
